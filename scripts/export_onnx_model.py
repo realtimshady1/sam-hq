@@ -155,7 +155,7 @@ def run_export(
 
     _ = onnx_model(**dummy_inputs)
 
-    output_names = ["masks", "iou_predictions", "low_res_masks"]
+    output_names = ["masks", "iou_predictions", "low_res_masks", "xtl", "ytl", "xbr", "ybr"]
 
     with warnings.catch_warnings():
         warnings.filterwarnings("ignore", category=torch.jit.TracerWarning)
