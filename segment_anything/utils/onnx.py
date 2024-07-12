@@ -76,20 +76,20 @@ class SamOnnxModel(nn.Module):
         return mask_embedding
 
     def mask_postprocessing(self, masks: torch.Tensor, orig_im_size: torch.Tensor) -> torch.Tensor:
-        masks = F.interpolate(
-            masks,
-            size=(self.img_size, self.img_size),
-            mode="bilinear",
-            align_corners=False,
-        )
-
-        prepadded_size = self.resize_longest_image_size(orig_im_size, self.img_size).to(torch.int64)
-        masks = masks[..., : prepadded_size[0], : prepadded_size[1]]  # type: ignore
-
+        prepadded_size = self.resize_longest_image_size(orig_im_size, self.img_size * 0.25).to(torch.int64)
+        masks = masks[...,  : prepadded_size[0], : prepadded_size[1] ]  # type: ignore
         orig_im_size = orig_im_size.to(torch.int64)
         h, w = orig_im_size[0], orig_im_size[1]
         masks = F.interpolate(masks, size=(h, w), mode="bilinear", align_corners=False)
-        return masks
+        masks = torch.gt(masks, 0).to(torch.uint8)
+        nonzero = torch.nonzero(masks)
+        xindices = nonzero[:, 3:4]
+        yindices = nonzero[:, 2:3]
+        ytl = torch.min(yindices).to(torch.int64)
+        ybr = torch.max(yindices).to(torch.int64)
+        xtl = torch.min(xindices).to(torch.int64)
+        xbr = torch.max(xindices).to(torch.int64)
+        return masks[:, :, ytl:ybr + 1, xtl:xbr + 1], xtl, ytl, xbr, ybr
 
 
     @torch.no_grad()
@@ -143,7 +143,7 @@ class SamOnnxModel(nn.Module):
         else:
             masks = masks_sam + masks_hq
 
-        upscaled_masks = self.mask_postprocessing(masks, orig_im_size)
+        upscaled_masks, xtl, ytl, xbr, ybr = self.mask_postprocessing(masks, orig_im_size)
 
         if self.return_extra_metrics:
             stability_scores = calculate_stability_score(
@@ -152,4 +152,4 @@ class SamOnnxModel(nn.Module):
             areas = (upscaled_masks > self.model.mask_threshold).sum(-1).sum(-1)
             return upscaled_masks, scores, stability_scores, areas, masks
 
-        return upscaled_masks, scores, masks
+        return upscaled_masks, scores, masks, xtl, ytl, xbr, ybr
